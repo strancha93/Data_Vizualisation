@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Upload, FileJson, AlertCircle, Activity, Search, Plus, Database, User, LogOut, Trash2, Shield, Lock, ArrowRight, Users, UserPlus } from 'lucide-react';
 import { FileStatus, ParsedDataset, SignalData, UserRole, StoredDatasetMetadata } from './types';
-import { parseMatlabJson, generateDemoData, filterBusTree } from './utils/dataProcessor';
+import { parseMatlabJson, filterBusTree } from './utils/dataProcessor';
 import { saveDataset, getAllMetadata, getDataset, deleteDataset, isUserAuthorized } from './utils/storage';
 import SignalTree from './components/SignalTree';
 import ChartViewer from './components/ChartViewer';
@@ -133,27 +133,6 @@ const App: React.FC = () => {
     reader.readAsText(file);
     // Reset input
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const loadDemoData = async () => {
-    setStatus(FileStatus.LOADING);
-    setTimeout(async () => {
-      const demo = generateDemoData();
-      const name = "Demo_Simulation";
-      const parsed = parseMatlabJson(demo, name);
-      
-      // Also save demo data for consistency
-      await saveDataset(parsed, name, userEmail || 'system');
-      refreshStorageList();
-
-      setDataset(parsed);
-      setDatasetName(name);
-      setStatus(FileStatus.PARSED);
-      setErrorMsg(null);
-      setChartSlots(Array(MAX_SLOTS).fill([]));
-      setSearchTerm('');
-      resetCursors();
-    }, 600);
   };
 
   const handleLoadStoredDataset = async (id: string, name: string) => {
@@ -491,15 +470,6 @@ const App: React.FC = () => {
                   Upload New Dataset
                 </button>
               </div>
-            )}
-            
-            {canUpload && (
-                <button 
-                    onClick={loadDemoData}
-                    className="w-full text-xs text-slate-500 hover:text-blue-600 hover:underline text-center"
-                >
-                    Generate Demo Data
-                </button>
             )}
           </div>
         </div>
