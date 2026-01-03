@@ -1,0 +1,5 @@
+{
+  "name": "Data_Visualization",
+  "description": "Visualize and analyze Matlab Simulink Bus datasets (JSON export) with interactive time-series charts and AI-powered insights.",
+  "requestFramePermissions": []
+}
