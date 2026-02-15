@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { Upload, FileJson, AlertCircle, Activity, Search, Plus, Database, User, LogOut, Trash2, Shield, Lock, ArrowRight, Users, UserPlus } from 'lucide-react';
 import { FileStatus, ParsedDataset, SignalData, UserRole, StoredDatasetMetadata } from './types';
-import { parseMatlabJson, filterBusTree } from './utils/dataProcessor';
+import { parseMatlabJson, parseCsv, parseJs, filterBusTree } from './utils/dataProcessor';
 import { saveDataset, getAllMetadata, getDataset, deleteDataset, isUserAuthorized } from './utils/storage';
 import SignalTree from './components/SignalTree';
 import ChartViewer from './components/ChartViewer';
@@ -108,9 +108,21 @@ const App: React.FC = () => {
 
     reader.onload = async (e) => {
       try {
-        const jsonContent = JSON.parse(e.target?.result as string);
-        const name = file.name.replace('.json', '');
-        const parsed = parseMatlabJson(jsonContent, name);
+        const content = e.target?.result as string;
+        const lowerName = file.name.toLowerCase();
+        const name = file.name.replace(/\.(json|csv|js|txt)$/i, '');
+        
+        let parsed: ParsedDataset;
+
+        if (lowerName.endsWith('.csv')) {
+            parsed = parseCsv(content, name);
+        } else if (lowerName.endsWith('.js') || lowerName.endsWith('.txt')) {
+            parsed = parseJs(content, name);
+        } else {
+            // Default to JSON
+            const jsonContent = JSON.parse(content);
+            parsed = parseMatlabJson(jsonContent, name);
+        }
         
         // Save to storage immediately
         await saveDataset(parsed, name, userEmail || 'unknown');
@@ -125,7 +137,7 @@ const App: React.FC = () => {
         resetCursors();
       } catch (err) {
         setStatus(FileStatus.ERROR);
-        setErrorMsg("Invalid JSON file. Please upload a valid JSON export from Matlab.");
+        setErrorMsg("Failed to parse file. Ensure it is a valid JSON, CSV, or JS data file.");
         console.error(err);
       }
     };
@@ -455,7 +467,7 @@ const App: React.FC = () => {
                 <input 
                   type="file" 
                   ref={fileInputRef}
-                  accept=".json"
+                  accept=".json,.csv,.js,.txt"
                   onChange={handleFileUpload}
                   className="hidden" 
                 />
@@ -542,7 +554,7 @@ const App: React.FC = () => {
             <div className="text-center p-6 text-slate-400 text-sm mt-10">
               <FileJson size={40} className="mx-auto mb-2 opacity-20" />
               <p>Select a dataset from the Repository to start.</p>
-              {canUpload && <p className="text-xs mt-2 opacity-75">Or upload a new JSON file.</p>}
+              {canUpload && <p className="text-xs mt-2 opacity-75">Or upload a new JSON, CSV, or JS file.</p>}
             </div>
           )}
 

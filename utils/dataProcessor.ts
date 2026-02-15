@@ -109,6 +109,132 @@ export const parseMatlabJson = (jsonData: any, fileName: string): ParsedDataset 
   };
 };
 
+export const parseCsv = (content: string, fileName: string): ParsedDataset => {
+  const lines = content.trim().split(/\r?\n/);
+  if (lines.length < 2) throw new Error("CSV file is empty or missing headers");
+
+  // Parse Headers
+  const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+  
+  // Parse Data Rows
+  // Filter out empty lines
+  const dataRows = lines.slice(1)
+    .filter(line => line.trim().length > 0)
+    .map(line => line.split(',').map(v => {
+        const num = parseFloat(v);
+        return isNaN(num) ? 0 : num; // Handle NaNs gracefully
+    }));
+
+  if (dataRows.length === 0) throw new Error("No data rows found in CSV");
+
+  // Pivot data: row-major to column-major
+  // headers.length determines number of columns
+  const columns: number[][] = headers.map(() => []);
+  
+  dataRows.forEach(row => {
+    headers.forEach((_, colIdx) => {
+       // If row is shorter than headers, push 0 or similar
+       const val = row[colIdx] !== undefined ? row[colIdx] : 0;
+       columns[colIdx].push(val);
+    });
+  });
+
+  let timeVector: number[] = [];
+  const signals: SignalData[] = [];
+  const flatSignals: Record<string, SignalData> = {};
+
+  // Identify Time Column
+  const timeIdx = headers.findIndex(h => /^(time|t|tout)$/i.test(h));
+  
+  if (timeIdx !== -1) {
+    timeVector = columns[timeIdx];
+  } else {
+    // Fallback: Use the first column as time if strictly monotonic? 
+    // Or just generate an index based time 0..N
+    // Let's default to first column as generic 'x-axis' if no time found, 
+    // unless there is only 1 column, then it is data.
+    if (columns.length > 1) {
+       timeVector = columns[0];
+    } else {
+       timeVector = columns[0].map((_, i) => i);
+    }
+  }
+
+  headers.forEach((header, idx) => {
+    // If we identified a specific time column, skip it in the signal list
+    // (unless you want to plot time vs time)
+    if (timeIdx !== -1 && idx === timeIdx) return;
+    
+    // If we used column 0 as fallback time, we might still want to plot it, but usually not.
+    // Let's include it if we want, but for now let's skip if it is exactly the time vector.
+
+    const safeName = header.replace(/\W/g, '_');
+    const id = `${fileName}.${safeName}`;
+    const signal: SignalData = {
+      id,
+      name: header,
+      path: [fileName, header],
+      data: columns[idx],
+      time: timeVector,
+      stats: calculateStats(columns[idx])
+    };
+    signals.push(signal);
+    flatSignals[id] = signal;
+  });
+
+  const rootBus: BusNode = {
+    name: fileName,
+    path: [],
+    signals: signals,
+    subBuses: []
+  };
+
+  return {
+    rootBus,
+    flatSignals,
+    commonTimeVector: timeVector
+  };
+};
+
+export const parseJs = (content: string, fileName: string): ParsedDataset => {
+  // 1. Try to extract JSON object between first { and last }
+  const firstBrace = content.indexOf('{');
+  const lastBrace = content.lastIndexOf('}');
+
+  let targetObject: any = null;
+
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    const potentialJson = content.substring(firstBrace, lastBrace + 1);
+    try {
+      targetObject = JSON.parse(potentialJson);
+    } catch (e) {
+      // If strict JSON parse fails, try evaluating as JS object (e.g. keys without quotes)
+      try {
+        // use Function constructor to safely evaluate data object
+        targetObject = new Function(`return ${potentialJson};`)();
+      } catch (e2) {
+        console.warn("Failed to parse JS object block", e2);
+      }
+    }
+  }
+
+  // 2. If that failed, try evaluating the whole file content if it looks like an assignment
+  if (!targetObject) {
+     const cleaned = content.replace(/^(export\s+)?(const|let|var)\s+\w+\s*=\s*/, '').replace(/;$/, '');
+     try {
+        targetObject = new Function(`return ${cleaned};`)();
+     } catch (e) {
+        throw new Error("Could not parse JS/Text file as valid data object.");
+     }
+  }
+
+  if (targetObject) {
+    return parseMatlabJson(targetObject, fileName);
+  }
+  
+  throw new Error("No valid data structure found in file.");
+};
+
 export const filterBusTree = (node: BusNode, term: string): BusNode | null => {
   if (!term) return node;
   const lowerTerm = term.toLowerCase();
@@ -138,33 +264,4 @@ export const filterBusTree = (node: BusNode, term: string): BusNode | null => {
   }
   
   return null;
-};
-
-// Generate dummy data for demo purposes
-export const generateDemoData = (): any => {
-  const steps = 1000;
-  const t = Array.from({ length: steps }, (_, i) => i * 0.01);
-  
-  return {
-    time: t,
-    simulation_metadata: {
-      version: 1.0,
-      solver: "ode45"
-    },
-    vehicle_bus: {
-      speed: t.map(val => 10 * (1 - Math.exp(-val)) + Math.random() * 0.5),
-      engine: {
-        rpm: t.map(val => 2000 + 1000 * Math.sin(val) + Math.random() * 50),
-        temperature: t.map(val => 80 + 10 * (1 - Math.exp(-0.1 * val))),
-        cylinders: [
-           { pressure: t.map(val => 10 * Math.sin(10 * val)) },
-           { pressure: t.map(val => 10 * Math.sin(10 * val + Math.PI)) }
-        ]
-      },
-      chassis: {
-        suspension_fl: t.map(val => Math.sin(5 * val) * Math.exp(-0.5 * val)),
-        suspension_fr: t.map(val => Math.cos(5 * val) * Math.exp(-0.5 * val))
-      }
-    }
-  };
 };
